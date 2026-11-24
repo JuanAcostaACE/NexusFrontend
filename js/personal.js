@@ -223,29 +223,75 @@ const Personal = {
   admin: {
     pestanas: [
       { id: "sedes", texto: "Sedes" },
+      { id: "reservas", texto: "Reservas" },
       { id: "usuarios", texto: "Usuarios" },
       { id: "habitaciones", texto: "Habitaciones" },
       { id: "catalogo", texto: "Catálogo" },
       { id: "reportes", texto: "Reportes" },
     ],
 
-    render(el, tab = "sedes") {
+    // Sede activa del administrador (Administrador.cambiarSedeActiva): la guarda el servidor y la usan
+    // las pestañas de reservas, habitaciones, catálogo y reportes.
+    sedeActivaId: "",
+
+    async render(el, tab = "sedes") {
       const barra = this.pestanas.map((p) =>
         `<button class="pestana ${p.id === tab ? "activa" : ""}" data-tab="${p.id}">${p.texto}</button>`).join("");
       el.innerHTML = `
         <h2 class="titulo">Administración</h2>
-        <p class="subtitulo">Acceso a todas las sedes.</p>
+        <div id="adm-sede" class="panel" style="margin-bottom:14px"></div>
         <div class="pestanas">${barra}</div>
         <div id="adm-contenido" class="panel"></div>`;
       el.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => this.render(el, b.dataset.tab)));
       const cont = el.querySelector("#adm-contenido");
+      try {
+        await this.pintarSedeActiva(el.querySelector("#adm-sede"), () => this.render(el, tab));
+      } catch (err) { UI.toast(err.message, "error"); }
+      const requiereSede = ["reservas", "habitaciones", "catalogo", "reportes"];
+      if (requiereSede.includes(tab) && !this.sedeActivaId) {
+        cont.innerHTML = `<p class="vacio">Elige una sede activa arriba para continuar.</p>`;
+        return;
+      }
       ({
         sedes: () => this.sedes(cont),
+        reservas: () => this.reservas(cont),
         usuarios: () => this.usuarios(cont),
         habitaciones: () => this.habitaciones(cont),
         catalogo: () => this.catalogo(cont),
         reportes: () => this.reportes(cont),
       })[tab]();
+    },
+
+    // HU-13: selector de sede activa (se guarda en el servidor con PUT /api/admin/sede-activa).
+    async pintarSedeActiva(cont, alCambiar) {
+      const [sedes, activa] = await Promise.all([Api.get("/api/admin/sedes"), Api.get("/api/admin/sede-activa")]);
+      this.sedeActivaId = activa.sedeId || "";
+      cont.innerHTML = `
+        <label style="max-width:360px">Sede activa
+          <select id="sede-activa"><option value="">— Elige una sede —</option>${UI.opciones(
+            sedes.map((s) => ({ valor: s.id, texto: s.nombre + (s.activa ? "" : " (inactiva)") })), this.sedeActivaId)}</select></label>
+        <p class="subtitulo" style="margin:8px 0 0">Reservas, habitaciones, catálogo y reportes se muestran para esta sede.</p>`;
+      cont.querySelector("#sede-activa").addEventListener("change", async (e) => {
+        if (!e.target.value) return;
+        try {
+          await Api.put("/api/admin/sede-activa", { sedeId: e.target.value });
+          UI.toast("Sede activa cambiada", "ok");
+          alCambiar();
+        } catch (err) { UI.toast(err.message, "error"); }
+      });
+    },
+
+    // HU-13: reservas de la sede activa.
+    async reservas(cont) {
+      const lista = await Api.get("/api/admin/reservas");
+      cont.innerHTML = `<h3>Reservas de la sede activa</h3>` + UI.tabla(lista, [
+        { titulo: "Código", campo: "codigo" },
+        { titulo: "Cliente", campo: "clienteNombre" },
+        { titulo: "Habitación", campo: "habitacionNumero" },
+        { titulo: "Entrada", campo: "fechaEntrada" },
+        { titulo: "Salida", campo: "fechaSalida" },
+        { titulo: "Estado", render: (r) => UI.estado(r.estado) },
+      ], "No hay reservas en esta sede");
     },
 
     async selectorSede(cont, onCambio) {
@@ -326,7 +372,7 @@ const Personal = {
             <label>Nombre <input name="nombre" required></label>
             <label>Correo <input type="email" name="email" required></label>
             <label>Contraseña inicial <input type="password" name="password" minlength="8" required></label>
-            <label>Sede <select name="sedeId" required>${UI.opciones(sedes.map((s) => ({ valor: s.id, texto: s.nombre })))}</select></label>
+            <label>Sede <select name="sedeId" required>${UI.opciones(sedes.map((s) => ({ valor: s.id, texto: s.nombre })), this.sedeActivaId)}</select></label>
             <button type="submit">Crear recepcionista</button>
           </form></div>`;
       cont.querySelector("#usr-sede").addEventListener("change", (e) => pintar(e.target.value));
@@ -342,7 +388,6 @@ const Personal = {
 
     // HU-15: inventario de habitaciones por sede y cambio de estado.
     async habitaciones(cont) {
-      const sedes = await Api.get("/api/admin/sedes");
       const pintar = async (sedeId) => {
         const lista = await Api.get(`/api/habitaciones?sedeId=${sedeId}`);
         cont.querySelector("#hab-tabla").innerHTML = UI.tabla(lista, [
@@ -372,8 +417,7 @@ const Personal = {
         }));
       };
       cont.innerHTML = `
-        <label style="max-width:360px">Sede
-          <select id="hab-sede">${UI.opciones(sedes.map((s) => ({ valor: s.id, texto: s.nombre })))}</select></label>
+        <input type="hidden" id="hab-sede" value="${this.sedeActivaId}">
         <div id="hab-tabla" style="margin-top:12px"></div>
         <div class="seccion"><h3>Nueva habitación</h3>
           <form id="f-hab" class="grid">
@@ -398,7 +442,6 @@ const Personal = {
 
     // HU-16: catálogo de consumos por sede (activos e inactivos).
     async catalogo(cont) {
-      const sedes = await Api.get("/api/admin/sedes");
       const pintar = async (sedeId) => {
         const lista = await Api.get(`/api/admin/catalogo?sedeId=${sedeId}`);
         cont.querySelector("#cat-tabla").innerHTML = UI.tabla(lista, [
@@ -414,8 +457,7 @@ const Personal = {
         }));
       };
       cont.innerHTML = `
-        <label style="max-width:360px">Sede
-          <select id="cat-sede">${UI.opciones(sedes.map((s) => ({ valor: s.id, texto: s.nombre })))}</select></label>
+        <input type="hidden" id="cat-sede" value="${this.sedeActivaId}">
         <div id="cat-tabla" style="margin-top:12px"></div>
         <div class="seccion"><h3>Nuevo ítem</h3>
           <form id="f-cat" class="grid">
@@ -439,10 +481,9 @@ const Personal = {
 
     // HU-17: reportes de ocupación e ingresos por sede y rango.
     async reportes(cont) {
-      const sedes = await Api.get("/api/admin/sedes");
       cont.innerHTML = `
         <form id="f-rep" class="grid">
-          <label>Sede <select name="sede">${UI.opciones(sedes.map((s) => ({ valor: s.id, texto: s.nombre })))}</select></label>
+          <input type="hidden" name="sede" value="${this.sedeActivaId}">
           <label>Desde <input type="date" name="inicio" required value="${UI.fechaHoy(-30)}"></label>
           <label>Hasta <input type="date" name="fin" required value="${UI.fechaHoy(0)}"></label>
           <button type="submit">Generar</button>
