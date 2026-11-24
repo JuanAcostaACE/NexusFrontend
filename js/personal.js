@@ -233,6 +233,8 @@ const Personal = {
     // Sede activa del administrador (Administrador.cambiarSedeActiva): la guarda el servidor y la usan
     // las pestañas de reservas, habitaciones, catálogo y reportes.
     sedeActivaId: "",
+    // HU-13: por defecto se muestran todas las sedes; el administrador puede ocultar las inactivas.
+    sedesVerInactivas: true,
 
     async render(el, tab = "sedes") {
       const barra = this.pestanas.map((p) =>
@@ -306,9 +308,14 @@ const Personal = {
 
     // HU-13: listar, crear, editar y activar/inactivar sedes.
     async sedes(cont) {
-      const lista = await Api.get("/api/admin/sedes");
+      const todas = await Api.get("/api/admin/sedes");
+      const lista = this.sedesVerInactivas ? todas : todas.filter((s) => s.activa);
       cont.innerHTML = `
         <h3>Sedes</h3>
+        <label class="casilla" style="display:flex;align-items:center;gap:8px;max-width:360px;margin-bottom:12px">
+          <input type="checkbox" id="sed-ver-inactivas" ${this.sedesVerInactivas ? "checked" : ""}>
+          Mostrar sedes inactivas${this.sedesVerInactivas ? "" : ` (${todas.length - lista.length} ocultas)`}
+        </label>
         ${UI.tabla(lista, [
           { titulo: "Nombre", campo: "nombre" },
           { titulo: "Dirección", campo: "direccion" },
@@ -321,6 +328,10 @@ const Personal = {
             <label>Dirección <input name="direccion" required></label>
             <button type="submit">Crear sede</button>
           </form></div>`;
+      cont.querySelector("#sed-ver-inactivas").addEventListener("change", (e) => {
+        this.sedesVerInactivas = e.target.checked;
+        this.sedes(cont);
+      });
       cont.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", async () => {
         try {
           await Api.post(`/api/admin/sedes/${b.dataset.toggle}/estado`, { activa: b.dataset.activa !== "true" });
