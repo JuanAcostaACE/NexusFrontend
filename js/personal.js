@@ -4,12 +4,12 @@ const Personal = {
   // ---------------------------------------------------------------- RECEPCIÓN
   recepcion: {
     pestanas: [
-      { id: "buscar", texto: "Buscar reserva (HU-07)" },
-      { id: "checkin", texto: "Check-in / No-show (HU-08)" },
-      { id: "consumos", texto: "Consumos (HU-09)" },
-      { id: "checkout", texto: "Check-out (HU-10)" },
-      { id: "limpieza", texto: "Limpieza (HU-11)" },
-      { id: "factura", texto: "Factura (HU-12)" },
+      { id: "buscar", texto: "Buscar reserva" },
+      { id: "checkin", texto: "Check-in / No-show" },
+      { id: "consumos", texto: "Consumos" },
+      { id: "checkout", texto: "Check-out" },
+      { id: "limpieza", texto: "Limpieza" },
+      { id: "factura", texto: "Factura" },
     ],
 
     render(el, tab = "buscar") {
@@ -222,11 +222,11 @@ const Personal = {
   // ---------------------------------------------------------------- ADMINISTRACIÓN
   admin: {
     pestanas: [
-      { id: "sedes", texto: "Sedes (HU-13)" },
-      { id: "usuarios", texto: "Usuarios (HU-14)" },
-      { id: "habitaciones", texto: "Habitaciones (HU-15)" },
-      { id: "catalogo", texto: "Catálogo (HU-16)" },
-      { id: "reportes", texto: "Reportes (HU-17)" },
+      { id: "sedes", texto: "Sedes" },
+      { id: "usuarios", texto: "Usuarios" },
+      { id: "habitaciones", texto: "Habitaciones" },
+      { id: "catalogo", texto: "Catálogo" },
+      { id: "reportes", texto: "Reportes" },
     ],
 
     render(el, tab = "sedes") {

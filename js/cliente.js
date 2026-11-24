@@ -1,11 +1,11 @@
 // Pantallas del CLIENTE (sin iniciar sesión): HU-01 a HU-05.
 const Cliente = {
   pestanas: [
-    { id: "disponibilidad", texto: "Disponibilidad (HU-01)" },
-    { id: "reservar", texto: "Reservar (HU-02)" },
-    { id: "pagar", texto: "Pagar (HU-03)" },
-    { id: "cancelar", texto: "Cancelar (HU-04)" },
-    { id: "comprobante", texto: "Comprobante (HU-05)" },
+    { id: "disponibilidad", texto: "Disponibilidad" },
+    { id: "reservar", texto: "Reservar" },
+    { id: "pagar", texto: "Pagar" },
+    { id: "cancelar", texto: "Cancelar" },
+    { id: "comprobante", texto: "Comprobante" },
   ],
 
   render(el, tab = "disponibilidad") {
