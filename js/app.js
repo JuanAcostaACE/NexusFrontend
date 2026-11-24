@@ -3,8 +3,10 @@ const App = {
   rutas: {
     "": "inicio",
     "/": "inicio",
+    "/cliente": "inicio",
+    "/servicios": "servicios",
+    "/mis-reservas": "misreservas",
     "/login": "login",
-    "/cliente": "cliente",
     "/recepcion": "recepcion",
     "/admin": "admin",
   },
@@ -15,6 +17,7 @@ const App = {
     servidor.addEventListener("change", () => {
       Api.base = servidor.value;
       App.verificarServidor();
+      App.route();
     });
     window.addEventListener("hashchange", () => this.route());
     this.verificarServidor();
@@ -33,34 +36,34 @@ const App = {
     }
   },
 
-  ruta() {
+  vistaActual() {
     const h = (location.hash || "#/").replace(/^#/, "").split("?")[0];
     return this.rutas[h] ?? "inicio";
   },
 
-  route() {
-    const vista = this.ruta();
+  async route() {
+    const vista = this.vistaActual();
     const sesion = Api.sesion.get();
+    Modal.cerrar();
 
     // Protección de rutas del personal
-    if ((vista === "recepcion" || vista === "admin") && !sesion) {
-      location.hash = "#/login";
-      return;
-    }
-    if (vista === "admin" && sesion && sesion.rol !== "Administrador") {
-      location.hash = "#/recepcion";
-      return;
-    }
-    if (vista === "recepcion" && sesion && sesion.rol === "Administrador") {
-      location.hash = "#/admin";
-      return;
-    }
+    if ((vista === "recepcion" || vista === "admin") && !sesion) { location.hash = "#/login"; return; }
+    if (vista === "admin" && sesion && sesion.rol !== "Administrador") { location.hash = "#/recepcion"; return; }
+    if (vista === "recepcion" && sesion && sesion.rol === "Administrador") { location.hash = "#/admin"; return; }
+
     this.pintarNav(vista, sesion);
     const app = document.getElementById("app");
+    app.className = (vista === "inicio" || vista === "servicios") ? "" : "contenedor";
+
+    if (vista === "inicio" || vista === "servicios") {
+      await Cliente.home(app);
+      if (vista === "servicios") document.getElementById("servicios")?.scrollIntoView({ behavior: "smooth" });
+      else window.scrollTo(0, 0);
+      return;
+    }
     ({
-      inicio: () => this.inicio(app),
+      misreservas: () => Cliente.misReservas(app),
       login: () => this.login(app),
-      cliente: () => Cliente.render(app),
       recepcion: () => Personal.recepcion.render(app),
       admin: () => Personal.admin.render(app),
     })[vista]();
@@ -69,7 +72,9 @@ const App = {
 
   pintarNav(vista, sesion) {
     const enlaces = [
-      { href: "#/cliente", texto: "Cliente", v: "cliente" },
+      { href: "#/", texto: "Habitaciones", v: "inicio" },
+      { href: "#/servicios", texto: "Servicios", v: "servicios" },
+      { href: "#/mis-reservas", texto: "Mis reservas", v: "misreservas" },
     ];
     if (sesion && sesion.rol !== "Administrador") enlaces.push({ href: "#/recepcion", texto: "Recepción", v: "recepcion" });
     if (sesion && sesion.rol === "Administrador") enlaces.push({ href: "#/admin", texto: "Administración", v: "admin" });
@@ -79,45 +84,29 @@ const App = {
     const cont = document.getElementById("sesion");
     if (sesion) {
       cont.innerHTML = `<span class="etiqueta">${UI.esc(sesion.nombre)} · ${UI.esc(sesion.rol)}</span>
-        <button class="secundario pequeno" id="salir">Salir</button>`;
+        <button class="btn-contorno" id="salir">Salir</button>`;
       document.getElementById("salir").addEventListener("click", () => {
         Api.sesion.borrar();
         UI.toast("Sesión cerrada", "ok");
         location.hash = "#/";
+        App.route();
       });
     } else {
-      cont.innerHTML = `<a href="#/login" class="boton pequeno" style="color:#fff;text-decoration:none">Personal: iniciar sesión</a>`;
+      cont.innerHTML = `<a href="#/login" class="btn-contorno">Acceso personal</a>`;
     }
-  },
-
-  inicio(app) {
-    app.innerHTML = `
-      <h1 class="titulo">Bienvenido a Nexus Hotel</h1>
-      <p class="subtitulo">Elige cómo quieres entrar.</p>
-      <div class="tarjetas">
-        <a class="tarjeta opcion" href="#/cliente">
-          <h3>Soy cliente</h3>
-          <p>Consulta disponibilidad, reserva, paga con PSE, cancela o descarga tu comprobante. No necesitas cuenta.</p>
-          <span class="boton">Reservar</span>
-        </a>
-        <a class="tarjeta opcion" href="#/login">
-          <h3>Soy personal del hotel</h3>
-          <p>Recepción: check-in, consumos, check-out y facturas. Administración: sedes, usuarios, inventario y reportes.</p>
-          <span class="boton naranja">Iniciar sesión</span>
-        </a>
-      </div>`;
   },
 
   login(app) {
     if (Api.sesion.activa()) { location.hash = "#/" + (Api.sesion.esAdmin() ? "admin" : "recepcion"); return; }
     app.innerHTML = `
       <div class="panel login">
-        <h2 class="titulo" style="font-size:1.4rem">Iniciar sesión</h2>
-        <p class="subtitulo">Personal del hotel</p>
+        <p class="sobretitulo">Acceso personal</p>
+        <h2 class="titulo" style="font-size:1.7rem">Iniciar sesión</h2>
+        <p class="subtitulo">Personal de recepción y administración.</p>
         <form id="f-login" class="grid" style="grid-template-columns:1fr">
-          <label>Correo <input type="email" name="email" required autocomplete="username"></label>
-          <label>Contraseña <input type="password" name="password" required autocomplete="current-password"></label>
-          <button type="submit">Entrar</button>
+          <label>Correo<input type="email" name="email" required autocomplete="username"></label>
+          <label>Contraseña<input type="password" name="password" required autocomplete="current-password"></label>
+          <button type="submit" class="btn-dorado">Entrar</button>
         </form>
         <div id="login-msg" style="margin-top:14px"></div>
       </div>`;
