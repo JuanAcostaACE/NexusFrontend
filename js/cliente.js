@@ -177,11 +177,11 @@ const Cliente = {
       </div>
       <p class="subtitulo">La habitación queda reservada durante 15 minutos mientras completas el pago.</p>
       <div class="acciones"><button class="btn-dorado" id="ir-pago">Pagar ahora</button><button class="secundario" id="luego">Pagar después</button></div>`);
-    m.querySelector("#ir-pago").addEventListener("click", () => this.pagoModal(r.codigo));
+    m.querySelector("#ir-pago").addEventListener("click", () => this.pagoModal(r.codigo, r.clienteDocumento));
     m.querySelector("#luego").addEventListener("click", () => Modal.cerrar());
   },
 
-  pagoModal(codigo) {
+  pagoModal(codigo, documento) {
     const m = Modal.abrir(`
       <h2>Pagar con PSE</h2>
       <p class="subtitulo">Reserva ${UI.esc(codigo)} · el resultado del pago es simulado para la demostración.</p>
@@ -198,12 +198,12 @@ const Cliente = {
       const f = UI.leer(e.target);
       const msg = m.querySelector("#modal-msg");
       try {
-        const r = await Api.post(`/api/reservas/${encodeURIComponent(codigo)}/pago`, { banco: f.banco, simulacion: f.simulacion });
+        const r = await Api.post(`/api/reservas/${encodeURIComponent(codigo)}/pago`, { banco: f.banco, simulacion: f.simulacion, documento });
         const tipo = r.estadoPago === "Aprobado" ? "ok" : r.estadoPago === "Rechazado" ? "error" : "";
         msg.innerHTML = UI.resultado(`<strong>Pago ${UI.esc(r.estadoPago.toLowerCase())}</strong>${UI.esc(r.mensaje)}
           ${r.estadoPago === "Aprobado" ? `<div class="acciones"><button class="btn-dorado" id="bajar-comp">Descargar comprobante</button></div>` : ""}`, tipo);
         msg.querySelector("#bajar-comp")?.addEventListener("click", () =>
-          UI.descargarPdf(`/api/reservas/${encodeURIComponent(codigo)}/comprobante`, `comprobante-${codigo}.pdf`)
+          UI.descargarPdf(`/api/reservas/${encodeURIComponent(codigo)}/comprobante?documento=${encodeURIComponent(documento)}`, `comprobante-${codigo}.pdf`)
             .catch((err) => UI.toast(err.message, "error")));
       } catch (err) { msg.innerHTML = UI.error(err); }
     });
@@ -227,6 +227,7 @@ const Cliente = {
     cont.innerHTML = `
       <form id="f-pago" class="grid">
         <label>Código de la reserva<input name="codigo" required placeholder="RSV-..."></label>
+        <label>Documento del huésped<input name="documento" required></label>
         <label>Resultado simulado de PSE
           <select name="simulacion"><option value="APROBADO">Aprobado</option><option value="RECHAZADO">Rechazado</option><option value="PENDIENTE">Pendiente</option></select>
         </label>
@@ -239,7 +240,7 @@ const Cliente = {
       const d = UI.leer(e.target);
       const out = cont.querySelector("#pago-resultado");
       try {
-        const r = await Api.post(`/api/reservas/${encodeURIComponent(d.codigo)}/pago`, { banco: d.banco, simulacion: d.simulacion });
+        const r = await Api.post(`/api/reservas/${encodeURIComponent(d.codigo)}/pago`, { banco: d.banco, simulacion: d.simulacion, documento: d.documento });
         const tipo = r.estadoPago === "Aprobado" ? "ok" : r.estadoPago === "Rechazado" ? "error" : "";
         out.innerHTML = UI.resultado(`<strong>Pago ${UI.esc(r.estadoPago.toLowerCase())}</strong>${UI.esc(r.mensaje)} ${UI.dato("Reserva", r.estadoReserva)}`, tipo);
       } catch (err) { out.innerHTML = UI.error(err); }
@@ -251,6 +252,7 @@ const Cliente = {
       <p class="subtitulo">Con más de 48 horas de anticipación el reembolso es total. Con menos, se retiene una noche.</p>
       <form id="f-canc" class="grid">
         <label>Código de la reserva<input name="codigo" required></label>
+        <label>Documento del huésped<input name="documento" required></label>
         <button type="submit" class="peligro">Cancelar reserva</button>
       </form>
       <div id="canc-resultado"></div>`;
@@ -259,7 +261,7 @@ const Cliente = {
       const d = UI.leer(e.target);
       const out = cont.querySelector("#canc-resultado");
       try {
-        const r = await Api.post(`/api/reservas/${encodeURIComponent(d.codigo)}/cancelar`);
+        const r = await Api.post(`/api/reservas/${encodeURIComponent(d.codigo)}/cancelar`, { documento: d.documento });
         out.innerHTML = UI.resultado(`<strong>Reserva cancelada</strong>${UI.esc(r.mensaje)}
           ${UI.dato("Política", r.politica)} ${UI.dato("Reembolso", UI.dinero(r.reembolso))} ${UI.dato("Retenido", UI.dinero(r.retenido))}`, "ok");
       } catch (err) { out.innerHTML = UI.error(err); }
@@ -270,6 +272,7 @@ const Cliente = {
     cont.innerHTML = `
       <form id="f-comp" class="grid">
         <label>Código de la reserva<input name="codigo" required></label>
+        <label>Documento del huésped<input name="documento" required></label>
         <button type="submit" class="btn-dorado">Descargar comprobante</button>
       </form>
       <div id="comp-resultado"></div>`;
@@ -278,7 +281,7 @@ const Cliente = {
       const d = UI.leer(e.target);
       const out = cont.querySelector("#comp-resultado");
       try {
-        await UI.descargarPdf(`/api/reservas/${encodeURIComponent(d.codigo)}/comprobante`, `comprobante-${d.codigo}.pdf`);
+        await UI.descargarPdf(`/api/reservas/${encodeURIComponent(d.codigo)}/comprobante?documento=${encodeURIComponent(d.documento)}`, `comprobante-${d.codigo}.pdf`);
         out.innerHTML = UI.resultado("<strong>Comprobante descargado</strong>Incluye el código QR para el check-in.", "ok");
       } catch (err) { out.innerHTML = UI.error(err); }
     });

@@ -84,7 +84,9 @@ const App = {
     const cont = document.getElementById("sesion");
     if (sesion) {
       cont.innerHTML = `<span class="etiqueta">${UI.esc(sesion.nombre)} · ${UI.esc(sesion.rol)}</span>
+        <button class="btn-contorno" id="cambiar-pw">Contraseña</button>
         <button class="btn-contorno" id="salir">Salir</button>`;
+      document.getElementById("cambiar-pw").addEventListener("click", () => App.cambiarPassword());
       document.getElementById("salir").addEventListener("click", () => {
         Api.sesion.borrar();
         UI.toast("Sesión cerrada", "ok");
@@ -94,6 +96,31 @@ const App = {
     } else {
       cont.innerHTML = `<a href="#/login" class="btn-contorno">Acceso personal</a>`;
     }
+  },
+
+  // Cambio de la propia contraseña (requiere la actual).
+  cambiarPassword() {
+    const m = Modal.abrir(`
+      <h2>Cambiar contraseña</h2>
+      <p class="subtitulo">Mínimo 8 caracteres.</p>
+      <form id="f-pw">
+        <label>Contraseña actual<input type="password" name="actual" required autocomplete="current-password"></label>
+        <label>Contraseña nueva<input type="password" name="nueva" required minlength="8" autocomplete="new-password"></label>
+        <label>Repite la contraseña nueva<input type="password" name="repite" required minlength="8" autocomplete="new-password"></label>
+        <button type="submit" class="btn-dorado">Guardar</button>
+      </form>
+      <div id="modal-msg"></div>`);
+    m.querySelector("#f-pw").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const d = UI.leer(e.target);
+      const msg = m.querySelector("#modal-msg");
+      if (d.nueva !== d.repite) { msg.innerHTML = UI.resultado("Las contraseñas nuevas no coinciden.", "error"); return; }
+      try {
+        await Api.post("/api/auth/cambiar-password", { passwordActual: d.actual, passwordNueva: d.nueva });
+        Modal.cerrar();
+        UI.toast("Contraseña actualizada", "ok");
+      } catch (err) { msg.innerHTML = UI.error(err); }
+    });
   },
 
   login(app) {

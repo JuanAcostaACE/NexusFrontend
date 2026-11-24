@@ -356,8 +356,17 @@ const Personal = {
         ]);
         cont.querySelectorAll("[data-estado]").forEach((s) => s.addEventListener("change", async () => {
           try {
-            const r = await Api.post(`/api/admin/habitaciones/${s.dataset.estado}/estado`, { estado: s.value });
-            UI.toast(r.reservasFuturasAfectadas ? `Estado cambiado. Hay ${r.reservasFuturasAfectadas} reserva(s) futura(s).` : "Estado cambiado", "ok");
+            const ruta = `/api/admin/habitaciones/${s.dataset.estado}/estado`;
+            let r;
+            try {
+              r = await Api.post(ruta, { estado: s.value });
+            } catch (err) {
+              // Con reservas pagadas vigentes el backend pide confirmación explícita (HU-15).
+              if (err.status === 409 && confirm(err.message + "\n\n¿Confirmar el cambio de todas formas?")) {
+                r = await Api.post(ruta, { estado: s.value, confirmar: true });
+              } else { throw err; }
+            }
+            UI.toast(r.reservasFuturasAfectadas ? `Estado cambiado. Hay ${r.reservasFuturasAfectadas} reserva(s) con pago vigente.` : "Estado cambiado", "ok");
             pintar(sedeId);
           } catch (err) { UI.toast(err.message, "error"); pintar(sedeId); }
         }));
