@@ -58,7 +58,16 @@ const Personal = {
             { titulo: "Salida", render: (f) => UI.fecha(f.fechaSalida) },
             { titulo: "Estado", render: (f) => UI.estado(f.estado) },
             { titulo: "Total", render: (f) => UI.dinero(f.valorTotal) },
+            { titulo: "", render: (f) => f.estado === "Pagada"
+                ? `<button class="pequeno" data-checkin="${UI.esc(f.codigo)}">Check-in</button>` : "" },
           ], r.mensaje || "No se encontraron reservas");
+          out.querySelectorAll("[data-checkin]").forEach((b) => b.addEventListener("click", async () => {
+            try {
+              await Api.post(`/api/reservas/${encodeURIComponent(b.dataset.checkin)}/checkin`);
+              UI.toast("Check-in registrado", "ok");
+              cont.querySelector("#f-buscar").requestSubmit();
+            } catch (err) { UI.toast(err.message, "error"); }
+          }));
         } catch (err) { out.innerHTML = UI.error(err); }
       });
     },
@@ -104,6 +113,9 @@ const Personal = {
         <div id="cons-resultado"></div>
         <div id="cons-cuenta" class="seccion"></div>`;
       if (!habs.length) cont.querySelector("#cons-resultado").innerHTML = UI.resultado("No hay habitaciones ocupadas en tu sede.");
+      else if (!items.length) cont.querySelector("#cons-resultado").innerHTML =
+        UI.resultado("Tu sede no tiene ítems activos en el catálogo. El administrador debe crearlos en Catálogo.");
+      if (!habs.length || !items.length) cont.querySelector('#f-cons button[type="submit"]').disabled = true;
       const cargarCuenta = async (habId) => {
         if (!habId) return;
         const c = await Api.get(`/api/habitaciones/${habId}/consumos`);
@@ -236,7 +248,30 @@ const Personal = {
     // HU-13: por defecto se muestran todas las sedes; el administrador puede ocultar las inactivas.
     sedesVerInactivas: true,
 
+    // Ventana de edición reutilizable: campos en HTML y función que guarda los datos leídos.
+    editar(titulo, campos, guardar) {
+      const m = Modal.abrir(`<h2>${UI.esc(titulo)}</h2>
+        <form id="f-editar">${campos}<button type="submit" class="btn-dorado">Guardar cambios</button></form>
+        <div id="modal-msg"></div>`);
+      m.querySelector("#f-editar").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          await guardar(UI.leer(e.target));
+          Modal.cerrar();
+          UI.toast("Cambios guardados", "ok");
+        } catch (err) { m.querySelector("#modal-msg").innerHTML = UI.error(err); }
+      });
+    },
+
+    tiposHabitacion: ["Simple", "Doble", "Familiar", "Suite"],
+
+    selectorTipo(actual = "") {
+      const tipos = actual && !this.tiposHabitacion.includes(actual) ? [actual, ...this.tiposHabitacion] : this.tiposHabitacion;
+      return `<select name="tipo" required>${UI.opciones(tipos.map((t) => ({ valor: t, texto: t })), actual)}</select>`;
+    },
+
     async render(el, tab = "sedes") {
+      this.el = el;
       const barra = this.pestanas.map((p) =>
         `<button class="pestana ${p.id === tab ? "activa" : ""}" data-tab="${p.id}">${p.texto}</button>`).join("");
       el.innerHTML = `
@@ -249,6 +284,7 @@ const Personal = {
       try {
         await this.pintarSedeActiva(el.querySelector("#adm-sede"), () => this.render(el, tab));
       } catch (err) { UI.toast(err.message, "error"); }
+      if (!cont.isConnected) return; // se cambió de pestaña mientras cargaba
       const requiereSede = ["reservas", "habitaciones", "catalogo", "reportes"];
       if (requiereSede.includes(tab) && !this.sedeActivaId) {
         cont.innerHTML = `<p class="vacio">Elige una sede activa arriba para continuar.</p>`;
@@ -320,7 +356,9 @@ const Personal = {
           { titulo: "Nombre", campo: "nombre" },
           { titulo: "Dirección", campo: "direccion" },
           { titulo: "Estado", render: (s) => UI.estado(s.activa ? "Activa" : "Inactiva") },
-          { titulo: "", render: (s) => `<button class="pequeno secundario" data-toggle="${s.id}" data-activa="${s.activa}">${s.activa ? "Inactivar" : "Activar"}</button>` },
+          { titulo: "", render: (s) => `
+              <button class="pequeno secundario" data-editar="${s.id}">Editar</button>
+              <button class="pequeno secundario" data-toggle="${s.id}" data-activa="${s.activa}">${s.activa ? "Inactivar" : "Activar"}</button>` },
         ])}
         <div class="seccion"><h3>Nueva sede</h3>
           <form id="f-sede" class="grid">
@@ -332,18 +370,26 @@ const Personal = {
         this.sedesVerInactivas = e.target.checked;
         this.sedes(cont);
       });
+      cont.querySelectorAll("[data-editar]").forEach((b) => b.addEventListener("click", () => {
+        const s = todas.find((x) => x.id === b.dataset.editar);
+        this.editar("Editar sede", `
+          <label>Nombre<input name="nombre" required value="${UI.esc(s.nombre)}"></label>
+          <label>Dirección<input name="direccion" required value="${UI.esc(s.direccion)}"></label>`,
+          async (d) => { await Api.put(`/api/admin/sedes/${s.id}`, d); this.render(this.el, "sedes"); });
+      }));
       cont.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", async () => {
         try {
           await Api.post(`/api/admin/sedes/${b.dataset.toggle}/estado`, { activa: b.dataset.activa !== "true" });
-          this.sedes(cont);
+          this.render(this.el, "sedes");
         } catch (err) { UI.toast(err.message, "error"); }
       }));
       cont.querySelector("#f-sede").addEventListener("submit", async (e) => {
         e.preventDefault();
         try {
-          await Api.post("/api/admin/sedes", UI.leer(e.target));
-          UI.toast("Sede creada", "ok");
-          this.sedes(cont);
+          const nueva = await Api.post("/api/admin/sedes", UI.leer(e.target));
+          await Api.put("/api/admin/sede-activa", { sedeId: nueva.id });
+          UI.toast("Sede creada y seleccionada como sede activa", "ok");
+          this.render(this.el, "sedes");
         } catch (err) { UI.toast(err.message, "error"); }
       });
     },
@@ -357,11 +403,26 @@ const Personal = {
           { titulo: "Nombre", campo: "nombre" },
           { titulo: "Correo", campo: "email" },
           { titulo: "Rol", campo: "rol" },
+          { titulo: "Sede", render: (u) => UI.esc(sedes.find((s) => s.id === u.sedeId)?.nombre || "—") },
           { titulo: "Estado", render: (u) => UI.estado(u.bloqueado ? "Bloqueada" : u.activo ? "Activo" : "Inactivo") },
           { titulo: "", render: (u) => `
+              <button class="pequeno secundario" data-editar="${u.id}">Editar</button>
               ${u.bloqueado ? `<button class="pequeno secundario" data-desbloq="${u.id}">Desbloquear</button>` : ""}
               ${u.activo && u.rol !== "Administrador" ? `<button class="pequeno peligro" data-baja="${u.id}">Desactivar</button>` : ""}` },
         ]);
+        cont.querySelectorAll("[data-editar]").forEach((b) => b.addEventListener("click", () => {
+          const u = lista.find((x) => x.id === b.dataset.editar);
+          const campoSede = u.rol === "Administrador" ? "" : `<label>Sede<select name="sedeId" required>${UI.opciones(
+            sedes.map((s) => ({ valor: s.id, texto: s.nombre })), u.sedeId)}</select></label>`;
+          this.editar("Editar usuario", `
+            <label>Nombre<input name="nombre" required value="${UI.esc(u.nombre)}"></label>
+            <label>Correo<input type="email" name="email" required value="${UI.esc(u.email)}"></label>${campoSede}`,
+            async (d) => {
+              await Api.put(`/api/admin/usuarios/${u.id}`, { nombre: d.nombre, email: d.email });
+              if (d.sedeId && d.sedeId !== u.sedeId) await Api.put(`/api/admin/usuarios/${u.id}/sede`, { sedeId: d.sedeId });
+              pintar(sedeId);
+            });
+        }));
         cont.querySelectorAll("[data-desbloq]").forEach((b) => b.addEventListener("click", async () => {
           await Api.post(`/api/admin/usuarios/${b.dataset.desbloq}/desbloquear`);
           UI.toast("Cuenta desbloqueada", "ok"); pintar(sedeId);
@@ -409,7 +470,20 @@ const Personal = {
           { titulo: "Estado", render: (h) => UI.estado(h.estado) },
           { titulo: "Cambiar a", render: (h) => `
               <select data-estado="${h.id}">${UI.opciones(["Disponible", "Mantenimiento"].map((x) => ({ valor: x, texto: x })), h.estado)}</select>` },
-        ]);
+          { titulo: "", render: (h) => `<button class="pequeno secundario" data-editar="${h.id}">Editar</button>` },
+        ], "Esta sede aún no tiene habitaciones");
+        cont.querySelectorAll("[data-editar]").forEach((b) => b.addEventListener("click", () => {
+          const h = lista.find((x) => x.id === b.dataset.editar);
+          this.editar(`Editar habitación ${h.numero}`, `
+            <label>Tipo${this.selectorTipo(h.tipo)}</label>
+            <label>Capacidad máxima<input type="number" name="capacidadMax" min="1" required value="${h.capacidadMax}"></label>
+            <label>Precio por noche<input type="number" name="precioBase" min="1" required value="${h.precioBase}"></label>`,
+            async (d) => {
+              await Api.put(`/api/admin/habitaciones/${h.id}`,
+                { tipo: d.tipo, capacidadMax: Number(d.capacidadMax), precioBase: Number(d.precioBase) });
+              pintar(sedeId);
+            });
+        }));
         cont.querySelectorAll("[data-estado]").forEach((s) => s.addEventListener("change", async () => {
           try {
             const ruta = `/api/admin/habitaciones/${s.dataset.estado}/estado`;
@@ -433,9 +507,9 @@ const Personal = {
         <div class="seccion"><h3>Nueva habitación</h3>
           <form id="f-hab" class="grid">
             <label>Número <input name="numero" required></label>
-            <label>Tipo <input name="tipo" required placeholder="Simple, Doble, Familiar…"></label>
+            <label>Tipo ${this.selectorTipo("Doble")}</label>
             <label>Capacidad máxima <input type="number" name="capacidadMax" min="1" required></label>
-            <label>Precio base <input type="number" name="precioBase" min="0" required></label>
+            <label>Precio por noche <input type="number" name="precioBase" min="1" required></label>
             <button type="submit">Crear habitación</button>
           </form></div>`;
       const sedeSel = cont.querySelector("#hab-sede");
@@ -460,8 +534,22 @@ const Personal = {
           { titulo: "Precio", render: (i) => UI.dinero(i.precio) },
           { titulo: "Categoría", campo: "categoria" },
           { titulo: "Estado", render: (i) => UI.estado(i.activo ? "Activo" : "Inactivo") },
-          { titulo: "", render: (i) => `<button class="pequeno secundario" data-cat="${i.id}" data-activo="${i.activo}">${i.activo ? "Inactivar" : "Activar"}</button>` },
-        ]);
+          { titulo: "", render: (i) => `
+              <button class="pequeno secundario" data-editar="${i.id}">Editar</button>
+              <button class="pequeno secundario" data-cat="${i.id}" data-activo="${i.activo}">${i.activo ? "Inactivar" : "Activar"}</button>` },
+        ], "Esta sede aún no tiene ítems en el catálogo");
+        cont.querySelectorAll("[data-editar]").forEach((b) => b.addEventListener("click", () => {
+          const i = lista.find((x) => x.id === b.dataset.editar);
+          this.editar("Editar ítem", `
+            <label>Nombre<input name="nombre" required value="${UI.esc(i.nombre)}"></label>
+            <label>Precio<input type="number" name="precio" min="1" required value="${i.precio}"></label>
+            <label>Categoría<select name="categoria">${UI.opciones(
+              ["Restaurante", "Minibar"].map((x) => ({ valor: x, texto: x })), i.categoria)}</select></label>`,
+            async (d) => {
+              await Api.put(`/api/admin/catalogo/${i.id}`, { nombre: d.nombre, precio: Number(d.precio), categoria: d.categoria });
+              pintar(sedeId);
+            });
+        }));
         cont.querySelectorAll("[data-cat]").forEach((b) => b.addEventListener("click", async () => {
           await Api.post(`/api/admin/catalogo/${b.dataset.cat}/estado`, { activa: b.dataset.activo !== "true" });
           pintar(sedeId);
@@ -473,7 +561,7 @@ const Personal = {
         <div class="seccion"><h3>Nuevo ítem</h3>
           <form id="f-cat" class="grid">
             <label>Nombre <input name="nombre" required></label>
-            <label>Precio <input type="number" name="precio" min="0" required></label>
+            <label>Precio <input type="number" name="precio" min="1" required></label>
             <label>Categoría <select name="categoria"><option>Restaurante</option><option>Minibar</option></select></label>
             <button type="submit">Crear ítem</button>
           </form></div>`;
@@ -496,7 +584,7 @@ const Personal = {
         <form id="f-rep" class="grid">
           <input type="hidden" name="sede" value="${this.sedeActivaId}">
           <label>Desde <input type="date" name="inicio" required value="${UI.fechaHoy(-30)}"></label>
-          <label>Hasta <input type="date" name="fin" required value="${UI.fechaHoy(0)}"></label>
+          <label>Hasta <input type="date" name="fin" required value="${UI.fechaHoy(30)}"></label>
           <button type="submit">Generar</button>
         </form>
         <div id="rep-resultado" style="margin-top:18px"></div>`;

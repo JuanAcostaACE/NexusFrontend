@@ -93,6 +93,8 @@ const UI = {
   fechaHoy(sumarDias = 0) {
     const d = new Date();
     d.setDate(d.getDate() + sumarDias);
-    return d.toISOString().slice(0, 10);
+    // Fecha local: toISOString() usa UTC y en Colombia, después de las 19:00, daría el día siguiente.
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   },
 };

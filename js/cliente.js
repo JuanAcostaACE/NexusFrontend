@@ -48,8 +48,8 @@ const Cliente = {
       <section class="buscador-wrap">
         <form id="f-buscar" class="buscador">
           <label>Hotel sede *<select name="sede" required></select></label>
-          <label>Llegada<input type="date" name="entrada" required min="${UI.fechaHoy(0)}" value="${UI.fechaHoy(3)}"></label>
-          <label>Salida<input type="date" name="salida" required min="${UI.fechaHoy(1)}" value="${UI.fechaHoy(6)}"></label>
+          <label>Llegada<input type="date" name="entrada" required min="${UI.fechaHoy(0)}" value="${UI.fechaHoy(0)}"></label>
+          <label>Salida<input type="date" name="salida" required min="${UI.fechaHoy(1)}" value="${UI.fechaHoy(2)}"></label>
           <label>Habitación<select name="tipo">${this.tipos.map((t) => `<option>${t}</option>`).join("")}</select></label>
           <label>Huéspedes<select name="huespedes">
             ${[1, 2, 3, 4, 5, 6].map((n) => `<option value="${n}" ${n === 2 ? "selected" : ""}>${n} ${n === 1 ? "adulto" : "adultos"}</option>`).join("")}
@@ -80,14 +80,28 @@ const Cliente = {
       return;
     }
     form.addEventListener("submit", (e) => { e.preventDefault(); this.buscar(app, UI.leer(form)); });
+    // Al cambiar cualquier criterio se vuelve a buscar, para no reservar con fechas de una búsqueda anterior.
+    form.addEventListener("change", () => {
+      const entrada = form.querySelector('[name="entrada"]');
+      const salida = form.querySelector('[name="salida"]');
+      if (entrada.value && salida.value <= entrada.value) {
+        const d = new Date(entrada.value + "T00:00:00");
+        d.setDate(d.getDate() + 1);
+        const p = (n) => String(n).padStart(2, "0");
+        salida.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      }
+      this.buscar(app, UI.leer(form));
+    });
     this.buscar(app, UI.leer(form));
   },
 
   async buscar(app, d) {
     const out = app.querySelector("#resultados");
     out.innerHTML = `<p class="vacio">Buscando habitaciones…</p>`;
+    const turno = (this.turno = (this.turno || 0) + 1); // solo se pinta la búsqueda más reciente
     try {
       const r = await Api.get(`/api/sedes/${d.sede}/disponibilidad?fechaEntrada=${d.entrada}&fechaSalida=${d.salida}&huespedes=${d.huespedes}`);
+      if (turno !== this.turno) return;
       let lista = r.habitaciones.slice().sort((a, b) => a.precioBase - b.precioBase);
       if (d.tipo !== "Todas") lista = lista.filter((h) => h.tipo.toLowerCase().includes(d.tipo.toLowerCase()));
       const noches = this.noches(d.entrada, d.salida);
@@ -121,7 +135,7 @@ const Cliente = {
       out.querySelectorAll("[data-i]").forEach((b) => b.addEventListener("click", () =>
         this.abrirReserva(lista[Number(b.dataset.i)], d, noches)));
     } catch (err) {
-      out.innerHTML = UI.error(err);
+      if (turno === this.turno) out.innerHTML = UI.error(err);
     }
   },
 
